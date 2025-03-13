@@ -3,6 +3,7 @@ import os
 from MRIScansPipeline import MRIScansPipeline, ImageSegmenter, FeatureExtraction
 import nibabel as nib
 
+
 class MRIProcessingPipeline:
     def __init__(self, file_path):
         self.file_path = file_path

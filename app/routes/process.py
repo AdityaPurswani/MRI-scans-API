@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 import os
 from app.services.pipeline import MRIProcessingPipeline
 
+
 router = APIRouter(prefix="/api/process", tags=["Processing"])
 
 @router.get("/{filename}")

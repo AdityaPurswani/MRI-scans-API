@@ -3,6 +3,7 @@ import os
 import shutil
 from app.services.pipeline import MRIProcessingPipeline
 
+
 router = APIRouter(prefix="/api/upload", tags=["Upload & Process"])
 
 UPLOAD_DIR = "uploads/"
