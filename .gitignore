@@ -1,5 +1,1 @@
-/__pycache__/MRIScansPipeline.cpython-311.pyc
-app/__pycache__/main.cpython-311.pyc
-app/routes/__pycache__/process.cpython-311.pyc
-app/routes/__pycache__/upload.cpython-311.pyc
-app/services/__pycache__/pipeline.cpython-311.pyc
+**/*.pyc
