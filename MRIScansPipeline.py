@@ -14,7 +14,6 @@ from scipy import ndimage
 from scipy.spatial import ConvexHull
 from scipy.linalg import svd
 
-
 class MRIScansPipeline():
     def __init__(self, input_dir, output_dir):
         self.input = input_dir
