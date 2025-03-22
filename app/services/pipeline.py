@@ -16,14 +16,14 @@ class MRIProcessingPipeline:
     def clean_segmented_directory(self):
         """ Removes old segmentation results before processing a new MRI scan. """
         if os.path.exists(self.segmented_dir):
-            print("🔹 Clearing previous segmentation results...")
+            print("Clearing previous segmentation results...")
             shutil.rmtree(self.segmented_dir)  # Delete all existing segmented files
         os.makedirs(self.segmented_dir, exist_ok=True)  # Recreate empty directory
         
     def clean_uncompressed_directory(self):
         """ Removes old uncompressed files before processing a new MRI scan. """
         if os.path.exists(self.uncompressed_dir):
-            print("🔹 Clearing previous uncompressed files...")
+            print("Clearing previous uncompressed files...")
             shutil.rmtree(self.uncompressed_dir)  # Delete all existing uncompressed files
         os.makedirs(self.uncompressed_dir, exist_ok=True)  # Recreate empty directory
 
@@ -40,7 +40,7 @@ class MRIProcessingPipeline:
             # Ensure directory exists
             os.makedirs(os.path.dirname(uncompressed_path), exist_ok=True)
             nib.save(img, uncompressed_path)
-            print(f"🔹 Saved uncompressed copy at: {uncompressed_path}")
+            print(f"Saved uncompressed copy at: {uncompressed_path}")
             return uncompressed_path
         except Exception as e:
             print(f"⚠️ Error saving uncompressed copy: {e}")
@@ -64,7 +64,7 @@ class MRIProcessingPipeline:
             'mni': "/Users/adityapurswani/Documents/ll/data/atlases/MNI/MNI-maxprob-thr25-1mm.nii.gz"
         }
 
-        print("🔹 Starting processing...")
+        print("Starting processing...")
         
         # Initialize uncompressed directory
         self.clean_uncompressed_directory()
@@ -135,10 +135,10 @@ class MRIProcessingPipeline:
         segmented_subcortex = feature_extractor.extract_features(f"{output_dir}/segmented_subcortex", "processed/volumetrics_subcortex.csv")
         segmented_mni = feature_extractor.extract_features(f"{output_dir}/segmented_mni", "processed/volumetrics_mni.csv")
 
-        print("✅ Processing complete")
-        print("🔹 Cortex Volume Data:", segmented_cortex)
-        print("🔹 Subcortex Volume Data:", segmented_subcortex)
-        print("🔹 MNI Volume Data:", segmented_mni)
+        print("Processing complete")
+        print("Cortex Volume Data:", segmented_cortex)
+        print("Subcortex Volume Data:", segmented_subcortex)
+        print("MNI Volume Data:", segmented_mni)
 
         return {
             "input_file": {
