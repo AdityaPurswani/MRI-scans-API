@@ -20,6 +20,6 @@ app.add_middleware(
 
 app.include_router(upload.router)
 
-@app.get("/")
+@app.get("/", tags=['MRI scans API'])
 async def root():
     return {"message": "Welcome to the MRI Processing API!"}

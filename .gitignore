@@ -1,4 +1,5 @@
 **/*.pyc
-/upload
+/uploads
 /processed
 **/*.nii.gz
+**/__pycache__/
