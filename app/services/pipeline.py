@@ -6,7 +6,7 @@ import nibabel as nib
 
 class MRIProcessingPipeline:
     def __init__(self, file_path):
-        self.file_path = file_path
+        self.file_path = f'/Users/adityapurswani/Documents/MRIscansAPI/{file_path}'
         self.base_dir = "/Users/adityapurswani/Documents/MRIscansAPI"
         self.pipeline = MRIScansPipeline("uploads", "processed")
         self.segmented_dir = os.path.join(self.base_dir, "processed/segmented")

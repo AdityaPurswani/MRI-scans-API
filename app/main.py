@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import upload
+from app.routes import nifti
 
 app = FastAPI(
     title="MRI Processing API",
@@ -19,6 +20,7 @@ app.add_middleware(
 )
 
 app.include_router(upload.router)
+app.include_router(nifti.router)
 
 @app.get("/", tags=['MRI scans API'])
 async def root():
