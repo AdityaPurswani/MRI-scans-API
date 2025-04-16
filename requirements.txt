@@ -6,4 +6,3 @@ pandas
 antspyx
 nipype
 scikit-image
-scipy
