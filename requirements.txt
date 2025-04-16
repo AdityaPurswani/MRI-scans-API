@@ -4,12 +4,7 @@ nibabel
 numpy
 pandas
 matplotlib
-ants
+antspyx
 nipype
-concurrent
-skimage
+scikit-image
 scipy
-base64
-typing
-shutil
-logging
