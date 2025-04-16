@@ -3,7 +3,6 @@ uvicorn
 nibabel
 numpy
 pandas
-matplotlib
 antspyx
 nipype
 scikit-image
