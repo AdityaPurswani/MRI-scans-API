@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+nibabel
+numpy
+pandas
+matplotlib
+ants
+subprocess
+nipype
+concurrent
+skimage
+scipy
+base64
+typing
+shutil
+logging
