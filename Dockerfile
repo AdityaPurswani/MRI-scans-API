@@ -1,5 +1,5 @@
 # Use a specific Python version (e.g., 3.9, 3.10, 3.11)
-FROM python:3.9
+FROM python:3.11
 
 # Create a non-root user 'user'
 RUN useradd -m -u 1000 user
