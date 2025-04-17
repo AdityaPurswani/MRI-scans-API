@@ -4,9 +4,6 @@ FROM python:3.11
 # Create a non-root user 'user'
 RUN useradd -m -u 1000 user
 
-# Add the user's local bin directory to the PATH
-ENV PATH="/home/user/.local/bin:$PATH"
-
 # Set the working directory
 WORKDIR /app
 
