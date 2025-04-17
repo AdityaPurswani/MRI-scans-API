@@ -5,7 +5,7 @@ FROM python:3.11
 RUN useradd -m -u 1000 user
 
 # Add the user's local bin directory to the PATH
-ENV PATH="/home/user/.local/bin:${PATH}"
+ENV PATH="/home/user/.local/bin:$PATH"
 
 # Set the working directory
 WORKDIR /app
