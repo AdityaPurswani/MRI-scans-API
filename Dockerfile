@@ -30,5 +30,5 @@ COPY ./app/ ./
 # EXPOSE ${PORT:-10000} # You could expose the dynamic port if desired
 
 # ---- MODIFIED CMD for Render ----
-# Use the $PORT variable provided by Render, defaulting to 10000 otherwise.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "${PORT:-10000}"]
+# Optional: Update CMD for consistency and local testing
+CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:${PORT:-10000}", "main:app"]
