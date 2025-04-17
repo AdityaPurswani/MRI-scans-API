@@ -6,3 +6,4 @@ pandas
 antspyx
 nipype
 scikit-image
+gunicorn
