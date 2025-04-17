@@ -8,3 +8,4 @@ nipype
 scikit-image
 gunicorn
 python-multipart
+matplotlib
