@@ -6,8 +6,8 @@ import nibabel as nib
 
 class MRIProcessingPipeline:
     def __init__(self, file_path):
-        self.file_path = f'/Users/adityapurswani/Documents/MRIscansAPI/{file_path}'
-        self.base_dir = "/Users/adityapurswani/Documents/MRIscansAPI"
+        self.file_path = {file_path}
+        self.base_dir = "../../"
         self.pipeline = MRIScansPipeline("uploads", "processed")
         self.segmented_dir = os.path.join(self.base_dir, "processed/segmented")
         # Add a new directory for uncompressed files
@@ -49,19 +49,19 @@ class MRIProcessingPipeline:
     def run_pipeline(self):
         """ Runs full MRI processing and clears old segmentation before running new segmentation """
 
-        brain_path = "/Users/adityapurswani/Documents/MRIscansAPI/processed/brain.nii.gz"
-        norm_path = "/Users/adityapurswani/Documents/MRIscansAPI/processed/normalized.nii.gz"
-        bias_corrected_path = "/Users/adityapurswani/Documents/MRIscansAPI/processed/bias_corrected.nii.gz"
-        registered_path = "/Users/adityapurswani/Documents/MRIscansAPI/processed/registered.nii.gz"
+        brain_path = "../../processed/brain.nii.gz"
+        norm_path = "../../processed/normalized.nii.gz"
+        bias_corrected_path = "../../processed/bias_corrected.nii.gz"
+        registered_path = "../../processed/registered.nii.gz"
 
-        input_dir = "/Users/adityapurswani/Documents/MRIscansAPI/processed"
-        output_dir = "/Users/adityapurswani/Documents/MRIscansAPI/processed/segmented"
-        feature_output_dir = "/Users/adityapurswani/Documents/MRIscansAPI/processed/features"
+        input_dir = "../../processed"
+        output_dir = "../../processed/segmented"
+        feature_output_dir = "../../processed/features"
 
         atlas_paths = {
-            'cortex': "/Users/adityapurswani/Documents/ll/data/atlases/HarvardOxford/HarvardOxford-cort-maxprob-thr25-1mm.nii.gz",
-            'subcortex': "/Users/adityapurswani/Documents/ll/data/atlases/HarvardOxford/HarvardOxford-sub-maxprob-thr25-1mm.nii.gz",
-            'mni': "/Users/adityapurswani/Documents/ll/data/atlases/MNI/MNI-maxprob-thr25-1mm.nii.gz"
+            'cortex': "../../ll/data/atlases/HarvardOxford/HarvardOxford-cort-maxprob-thr25-1mm.nii.gz",
+            'subcortex': "../../ll/data/atlases/HarvardOxford/HarvardOxford-sub-maxprob-thr25-1mm.nii.gz",
+            'mni': "../../ll/data/atlases/MNI/MNI-maxprob-thr25-1mm.nii.gz"
         }
 
         print("Starting processing...")
