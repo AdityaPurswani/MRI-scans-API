@@ -18,3 +18,4 @@ gunicorn
 httpx
 python-multipart
 requests
+fslpy

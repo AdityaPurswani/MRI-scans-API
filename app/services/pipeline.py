@@ -9,11 +9,12 @@ import tempfile
 from dotenv import load_dotenv
 from typing import Dict, Optional, List, Any
 import requests 
-import subprocess
-import re # For modifying the bet script
+import subprocess # Kept for DummyMRIScansPipeline if it were to simulate calls
 
 # --- Load environment variables ---
 try:
+    # This path assumes this script (app/pipeline.py) is one level down from 'app', 
+    # and .env is in the project root.
     dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path=dotenv_path)
@@ -24,8 +25,10 @@ except Exception as e:
     logging.error(f"pipeline.py: Error loading .env file: {e}")
 
 # --- Import your actual processing classes ---
+# These are expected to be in a file like MRIScansPipeline.py at the project root.
 MRIScansPipeline_class, ImageSegmenter_class, FeatureExtraction_class = None, None, None
 try:
+    # This assumes your project root (containing MRIScansPipeline.py) is in PYTHONPATH.
     from MRIScansPipeline import MRIScansPipeline as ActualMRIScansPipeline
     from MRIScansPipeline import ImageSegmenter as ActualImageSegmenter
     from MRIScansPipeline import FeatureExtraction as ActualFeatureExtraction
@@ -40,16 +43,15 @@ except ImportError as e:
     )
     # Fallback DUMMY classes 
     class DummyMRIScansPipeline:
-        def __init__(self, input_dir, output_dir, bet_executable_path=None):
+        def __init__(self, input_dir, output_dir): # MODIFIED: Removed bet_executable_path
             self.input = input_dir
             self.output = output_dir
-            self.bet_executable_path = bet_executable_path
             os.makedirs(self.output, exist_ok=True)
-            logging.warning(f"Using DUMMY MRIScansPipeline: input_dir={input_dir}, output_dir={output_dir}, bet_path='{bet_executable_path}'")
+            logging.warning(f"Using DUMMY MRIScansPipeline: input_dir={input_dir}, output_dir={output_dir}")
         
         def extract_brain_part(self, input_image_path, output_path_filename):
             full_output_path = os.path.join(self.output, output_path_filename)
-            logging.info(f"DUMMY MRIScansPipeline: Simulating brain extraction from {input_image_path} to {full_output_path} using BET path: {self.bet_executable_path if self.bet_executable_path else 'Not Provided (dummy will copy)'}")
+            logging.info(f"DUMMY MRIScansPipeline: Simulating brain extraction from {input_image_path} to {full_output_path} (expecting fsl.wrappers.bet in actual class)")
             if os.path.exists(input_image_path): shutil.copy(input_image_path, full_output_path)
             else: logging.error(f"DUMMY MRIScansPipeline: Input file {input_image_path} not found for brain extraction.")
             return full_output_path
@@ -84,7 +86,7 @@ except ImportError as e:
                 return None
 
     class DummyImageSegmenter:
-        def __init__(self, images_dir, atlas_paths, output_dir, bet_executable_path=None):
+        def __init__(self, images_dir, atlas_paths, output_dir): # MODIFIED: Removed bet_executable_path
             self.images_dir = images_dir
             self.atlas_paths = atlas_paths 
             self.output_dir = output_dir
@@ -109,7 +111,7 @@ except ImportError as e:
             return f"DUMMY segmented {filename}" 
 
     class DummyFeatureExtraction:
-        def __init__(self, images_dir, atlas_paths, output_dir, bet_executable_path=None):
+        def __init__(self, images_dir, atlas_paths, output_dir): # MODIFIED: Removed bet_executable_path
             self.images_dir = images_dir
             self.atlas_paths = atlas_paths
             self.output_dir = output_dir
@@ -187,70 +189,25 @@ class MRIProcessingPipelineWithSpaces:
         self.local_segmented_dir = os.path.join(self.local_processed_dir, "segmented")
         self.local_features_dir = os.path.join(self.local_processed_dir, "features")
         self.local_common_atlases_dir = os.path.join(self.temp_local_dir, "common_atlases")
-        self.local_tools_dir = os.path.join(self.temp_local_dir, "tools") 
+        # self.local_tools_dir is no longer needed as BET script is not downloaded here.
 
         os.makedirs(self.local_uploads_dir, exist_ok=True)
         os.makedirs(self.local_processed_dir, exist_ok=True)
         os.makedirs(self.local_segmented_dir, exist_ok=True)
         os.makedirs(self.local_features_dir, exist_ok=True)
         os.makedirs(self.local_common_atlases_dir, exist_ok=True)
-        os.makedirs(self.local_tools_dir, exist_ok=True)
+        # os.makedirs(self.local_tools_dir, exist_ok=True) # Not needed
 
-        # --- Download and Prepare BET and its dependencies ---
-        bet_original_url = "https://nifti-bucket.lon1.cdn.digitaloceanspaces.com/bet" 
-        # IMPORTANT: You need to upload 'remove_ext' to your space and provide its URL here
-        remove_ext_url = "https://nifti-bucket.lon1.cdn.digitaloceanspaces.com/remove_ext" # <<<< REPLACE WITH ACTUAL URL for remove_ext
-
-        local_bet_original_path = os.path.join(self.local_tools_dir, "bet_original")
-        self.local_bet_executable_path = os.path.join(self.local_tools_dir, "bet") # This will be the modified one
-        local_remove_ext_path = os.path.join(self.local_tools_dir, "remove_ext")
-
-        logger.info(f"Attempting to download original BET script from {bet_original_url}")
-        if not self._download_file_from_url(bet_original_url, local_bet_original_path):
-            self._cleanup_temp_dir() 
-            raise RuntimeError(f"CRITICAL: Failed to download original BET script from {bet_original_url}")
-
-        logger.info(f"Attempting to download remove_ext script from {remove_ext_url}")
-        if not self._download_file_from_url(remove_ext_url, local_remove_ext_path):
-            self._cleanup_temp_dir()
-            raise RuntimeError(f"CRITICAL: Failed to download remove_ext script from {remove_ext_url}. Please upload remove_ext and update its URL.")
-
-        try:
-            # Modify the downloaded bet_original script
-            with open(local_bet_original_path, 'r') as f_original_bet:
-                bet_content = f_original_bet.read()
-            
-            # Replace the hardcoded path to remove_ext
-            # Ensure the replacement target is specific enough, e.g., exactly "/bin/remove_ext"
-            # Using re.escape on the path to be replaced if it contains special regex characters.
-            # However, for a simple path like /bin/remove_ext, direct string replacement is fine.
-            modified_bet_content = bet_content.replace("/bin/remove_ext", local_remove_ext_path)
-            # Add more replacements here if other hardcoded paths are found in bet script
-            # For example, if bet uses $FSLDIR/bin/remove_ext, you might need to modify how FSLDIR is set or used.
-
-            with open(self.local_bet_executable_path, 'w') as f_modified_bet:
-                f_modified_bet.write(modified_bet_content)
-            
-            logger.info(f"Original BET script modified. Hardcoded '/bin/remove_ext' replaced with '{local_remove_ext_path}'. Modified script saved to {self.local_bet_executable_path}")
-
-            # Set execute permissions for both modified bet and remove_ext
-            os.chmod(self.local_bet_executable_path, 0o755) 
-            os.chmod(local_remove_ext_path, 0o755)
-            logger.info(f"Successfully made BET executable: {self.local_bet_executable_path}")
-            logger.info(f"Successfully made remove_ext executable: {local_remove_ext_path}")
-
-        except Exception as e:
-            logger.error(f"Failed during BET script modification or chmod: {e}")
-            self._cleanup_temp_dir() 
-            raise RuntimeError(f"Failed during BET script setup: {e}")
-        # --- End of BET setup ---
-
+        # --- BET Executable Handling Removed ---
+        # The MRIScansPipeline_class is now expected to use fsl.wrappers.bet
+        # and does not require a bet_executable_path.
+        
         self.pipeline = MRIScansPipeline_class( 
             input_dir=self.local_uploads_dir,
-            output_dir=self.local_processed_dir,
-            bet_executable_path=self.local_bet_executable_path 
+            output_dir=self.local_processed_dir
+            # MODIFIED: No longer passing bet_executable_path
         )
-        logger.info(f"Initialized MRIScansPipeline (type: {type(self.pipeline).__name__}) with patched BET: '{self.local_bet_executable_path}'")
+        logger.info(f"Initialized MRIScansPipeline (type: {type(self.pipeline).__name__}). Assumes FSL (including BET wrapper) is in environment PATH.")
 
     def _upload_to_spaces(self, local_file_path: str, object_key: str) -> Optional[str]:
         if not os.path.exists(local_file_path):
@@ -501,8 +458,8 @@ class MRIProcessingPipelineWithSpaces:
             segmenter = ImageSegmenter_class(
                 images_dir=self.local_processed_dir, 
                 atlas_paths=atlas_paths_for_pipeline,
-                output_dir=self.local_segmented_dir,
-                bet_executable_path=self.local_bet_executable_path 
+                output_dir=self.local_segmented_dir
+                # No longer passing bet_executable_path
             )
             files_to_segment = ["registered.nii.gz"] 
             for file_to_seg in files_to_segment:
@@ -527,8 +484,8 @@ class MRIProcessingPipelineWithSpaces:
             feature_extractor = FeatureExtraction_class(
                 images_dir=self.local_segmented_dir, 
                 atlas_paths=atlas_paths_for_pipeline, 
-                output_dir=self.local_features_dir,
-                bet_executable_path=self.local_bet_executable_path 
+                output_dir=self.local_features_dir
+                # No longer passing bet_executable_path
             )
             
             cortex_csv_basename = "volumetrics_cortex.csv"
@@ -560,9 +517,6 @@ class MRIProcessingPipelineWithSpaces:
             logger.error(f"Error during MRI processing pipeline: {e}", exc_info=True)
             self._cleanup_temp_dir() 
             raise RuntimeError(f"Pipeline failed with error: {e}") from e 
-        # finally: # Cleanup is now handled explicitly in except blocks or after success
-            # self._cleanup_temp_dir()
-            # logger.info("Temporary directory cleanup finished.") # This will be called by the caller of run_pipeline if needed
 
     def _cleanup_temp_dir(self):
         if self.temp_local_dir and os.path.exists(self.temp_local_dir): 

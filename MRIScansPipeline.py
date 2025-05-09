@@ -5,44 +5,34 @@ import matplotlib.pyplot as plt
 import ants
 import subprocess
 import os
-import logging
-import tempfile # For fsl_bias_correction temp dir
-import shutil # For fsl_bias_correction moving files
+import logging 
+import tempfile 
+import shutil 
 
-# Assuming nipype.interfaces.fsl is available in the environment
-from nipype.interfaces import fsl
+from nipype.interfaces import fsl 
 from matplotlib.colors import LinearSegmentedColormap
 from nibabel.processing import resample_from_to
 from concurrent.futures import ProcessPoolExecutor
 from skimage import measure, morphology, filters
-from scipy import ndimage # Kept for completeness, though not directly in user's FeatureExtraction methods
-from scipy.spatial import ConvexHull # Kept for completeness
+from scipy import ndimage 
+from scipy.spatial import ConvexHull 
 from scipy.linalg import svd
+from fsl.wrappers.bet import bet as fsl_bet_wrapper # Import the wrapper
 
-# Configure basic logging if not already configured by the main app
-# This allows the module to log information even if run standalone or imported by a non-logging app.
+# Configure basic logging
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class MRIScansPipeline():
-    def __init__(self, input_dir, output_dir, bet_executable_path):
+    def __init__(self, input_dir, output_dir): # bet_executable_path is no longer needed
         self.input = input_dir
         self.output = output_dir
-        self.bet_executable_path = bet_executable_path 
-        # It's good practice to ensure output directories exist
         os.makedirs(self.input, exist_ok=True)
         os.makedirs(self.output, exist_ok=True)
-        
-        if not os.path.isfile(self.bet_executable_path): # Check if it's a file
-            logger.warning(f"BET executable not found or is not a file at specified path: {self.bet_executable_path}. Brain extraction might fail.")
+        logger.info(f"MRIScansPipeline initialized. Input: {self.input}, Output: {self.output}. Using fsl.wrappers.bet.")
         
     def display_mri_image(self, input_image_path):
-        """Load and display slices from an MRI scan (NIfTI format). using Nibabel library
-        
-        Args:
-            input_image_path (str): path of the input image
-        """
         logger.info(f"Loading MRI image for display: {input_image_path}")
         if not os.path.exists(input_image_path):
             logger.error(f"MRI image not found at {input_image_path}")
@@ -53,57 +43,40 @@ class MRIScansPipeline():
         
         logger.info(f"Image Dimensions: {mri_scan.shape}")
         logger.info(f"Voxel Dimensions: {mri_scan.header.get_zooms()}")
-        # ... (rest of the logging and plotting as provided by user, plt.show() should be avoided in server)
-        # For server environments, consider saving the plot to a file instead of plt.show()
-        
-        # Example of saving plot instead of showing:
-        # fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-        # ... (plotting commands) ...
-        # plot_output_path = os.path.join(self.output, "mri_slices_display.png")
-        # plt.savefig(plot_output_path)
-        # logger.info(f"MRI display plot saved to {plot_output_path}")
-        # plt.close(fig) # Close the figure to free memory
-        
+        # ... (rest of display logic, avoiding plt.show() for server)
         return mri_data, mri_scan
         
     def extract_brain_part(self, input_image_path, output_filename):
-        """Performs skull stripping using the provided FSL BET executable.
+        """Performs skull stripping using fsl.wrappers.bet.bet.
         
         Args:   
            input_image_path (str): Path to the input MRI scan.
            output_filename (str): Filename for the extracted brain part (will be saved in self.output).
+           
+        Raises:
+            RuntimeError: If BET process fails.
         """
         full_output_path = os.path.join(self.output, output_filename)
-        
-        if not os.path.isfile(self.bet_executable_path):
-            error_msg = f"BET executable not found or is not a file at: {self.bet_executable_path}"
-            logger.error(error_msg)
-            raise FileNotFoundError(error_msg)
+        logger.info(f"Attempting brain extraction using fsl.wrappers.bet.bet. Input: {input_image_path}, Output: {full_output_path}")
 
-        # Ensure the BET path is treated as an executable, not a shell command string if it contains spaces.
-        # Using a list for command and arguments is generally safer with subprocess.run when shell=False.
-        bet_cmd_list = [self.bet_executable_path, input_image_path, full_output_path, "-R"]
-        logger.info(f"Executing BET command: {' '.join(bet_cmd_list)}")
-        
         try:
-            # shell=False is recommended for security and better control, especially if paths might have spaces
-            # (though paths here are constructed and less likely to have user-input spaces).
-            process_run = subprocess.run(bet_cmd_list, capture_output=True, text=True, check=False) # check=False to handle errors manually
-        except FileNotFoundError: # This can happen if self.bet_executable_path is not found by the OS
-            error_message = f"BET command failed: Executable '{self.bet_executable_path}' not found. Ensure it's a valid path and has execute permissions."
-            logger.error(error_message)
-            raise RuntimeError(error_message)
+            # MODIFIED: Call fsl_bet_wrapper with positional arguments for input and output
+            fsl_bet_wrapper(input_image_path, 
+                            full_output_path, 
+                            robust=True) # -R option
 
-
-        if process_run.returncode != 0 or not os.path.exists(full_output_path):
-            error_message = (f"BET failed!\nExit Code: {process_run.returncode}\n"
-                             f"Stdout: {process_run.stdout}\nStderr: {process_run.stderr}\n"
-                             f"Command: {' '.join(bet_cmd_list)}")
-            logger.error(error_message)
-            raise RuntimeError(error_message)
-        else:
-            logger.info(f"Brain extraction successful. Output: {full_output_path}")
+            if not os.path.exists(full_output_path):
+                error_message = f"BET output file not found at {full_output_path} after running fsl.wrappers.bet.bet."
+                logger.error(error_message)
+                raise FileNotFoundError(error_message)
+            
+            logger.info(f"Brain extraction successful using fsl.wrappers.bet.bet. Output: {full_output_path}")
             return full_output_path
+            
+        except Exception as e:
+            error_message = f"BET (using fsl.wrapper) failed for input {input_image_path}!\nError: {str(e)}"
+            logger.error(error_message, exc_info=True) 
+            raise RuntimeError(error_message) from e
         
     def intensity_normalisation(self, image_data):
         logger.info("Normalizing intensity.")
@@ -117,33 +90,29 @@ class MRIScansPipeline():
     
     def fsl_bias_correction(self, input_image_path, output_path):
         logger.info(f"Starting FSL FAST bias correction for {input_image_path}")
-        # Ensure the output directory for the final `output_path` exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        fast_out_dir = None # Initialize to None
+        fast_out_dir = None 
         try:
             fast_interface = fsl.FAST()
             fast_interface.inputs.in_files = input_image_path
             fast_interface.inputs.bias_iters = 5 
             fast_interface.inputs.bias_lowpass = 20 
             fast_interface.inputs.output_biascorrected = True 
-            fast_interface.inputs.img_type = 1 # T1-weighted
+            fast_interface.inputs.img_type = 1 
             
-            # Create a unique temporary directory for FAST outputs within self.output
             fast_out_dir = tempfile.mkdtemp(dir=self.output, prefix="fast_temp_")
             base_name = os.path.basename(input_image_path).replace(".nii.gz", "")
-            # Nipype FAST will create files based on this basename in its working dir (or fast_out_dir if set as working_dir)
             fast_interface.inputs.out_basename = os.path.join(fast_out_dir, f"{base_name}_fast_corrected")
 
             logger.info(f"Running FSL FAST. Output base for FAST internal files: {fast_interface.inputs.out_basename}")
-            result = fast_interface.run() # This runs FAST
+            result = fast_interface.run() 
             
             corrected_file_found = None
-            # Check standard output names from Nipype FAST
             if hasattr(result.outputs, 'restored_image') and result.outputs.restored_image and os.path.exists(result.outputs.restored_image):
                 corrected_file_found = result.outputs.restored_image
             elif hasattr(result.outputs, 'bias_corrected_image') and result.outputs.bias_corrected_image and os.path.exists(result.outputs.bias_corrected_image):
                  corrected_file_found = result.outputs.bias_corrected_image
-            else: # Fallback if specific output attributes are not found
+            else: 
                 expected_corrected_file = os.path.join(fast_out_dir, f"{base_name}_fast_corrected_restore.nii.gz")
                 if os.path.exists(expected_corrected_file):
                     corrected_file_found = expected_corrected_file
@@ -191,9 +160,9 @@ class MRIScansPipeline():
             logger.error(f"Error during ANTs registration: {str(e)}", exc_info=True)
             return None
         
-class BatchProcessingImages(MRIScansPipeline): # Corrected class name
-    def __init__(self, input_dir, output_dir, registered_dir, bet_executable_path):
-        super().__init__(input_dir, output_dir, bet_executable_path)
+class BatchProcessingImages(MRIScansPipeline): 
+    def __init__(self, input_dir, output_dir, registered_dir): 
+        super().__init__(input_dir, output_dir) 
         self.registered = registered_dir 
         os.makedirs(self.registered, exist_ok=True)
         
@@ -224,12 +193,12 @@ class BatchProcessingImages(MRIScansPipeline): # Corrected class name
             
             normalised_image = nib.Nifti1Image(normalised_image_data, brain_extracted_img.affine)
             normalised_image_filename = f"{base_filename}-normalized.nii.gz"
-            normalised_image_path = os.path.join(self.output, normalised_image_filename) # Save in self.output
+            normalised_image_path = os.path.join(self.output, normalised_image_filename)
             nib.save(normalised_image, normalised_image_path)
             logger.info(f"Normalized image saved to: {normalised_image_path}")
             
             bias_corrected_filename = f"{base_filename}-bias_corrected.nii.gz"
-            bias_corrected_path = os.path.join(self.output, bias_corrected_filename) # Save in self.output
+            bias_corrected_path = os.path.join(self.output, bias_corrected_filename)
             bias_corrected_path = self.fsl_bias_correction(normalised_image_path, bias_corrected_path)
             logger.info(f"Bias corrected image saved to: {bias_corrected_path}")
             
@@ -242,7 +211,7 @@ class BatchProcessingImages(MRIScansPipeline): # Corrected class name
                 shutil.rmtree(temp_registration_output_dir)
                 return f"Processing complete: {final_registered_image_path}"
             else:
-                shutil.rmtree(temp_registration_output_dir)
+                if os.path.exists(temp_registration_output_dir): shutil.rmtree(temp_registration_output_dir)
                 logger.error(f"Registration failed for {image_path}")
                 return f"Registration failed for {patient_id}-{image_id}"
         except Exception as e:
@@ -250,7 +219,6 @@ class BatchProcessingImages(MRIScansPipeline): # Corrected class name
             return f"Error processing {patient_id}-{image_id}: {str(e)}"
         
     def batch_process_mri_images(self, mni_path, num_workers=4):
-        # ... (user's implementation with logging as before)
         tasks = []
         for patient_id in os.listdir(self.input):
             patient_path = os.path.join(self.input, patient_id)
@@ -273,16 +241,8 @@ class BatchProcessingImages(MRIScansPipeline): # Corrected class name
         logger.info("Batch processing completed successfully!")  
         
 class ImageSegmenter(BatchProcessingImages):
-    def __init__(self, images_dir, atlas_paths, output_dir, bet_executable_path=None): # Added bet_executable_path for consistency
-        # This class inherits from BatchProcessingImages, which needs bet_executable_path.
-        # However, ImageSegmenter itself doesn't directly use BET.
-        # If it's intended to call processing methods from BatchProcessingImages that use BET,
-        # then bet_executable_path should be passed to super().
-        # For now, assuming it's mainly for segmentation and might not need to call those.
-        # If the user's original structure didn't call super, we keep that.
-        # The user's original structure for ImageSegmenter did not call super().__init__
-        # It re-initialized its own attributes. We will follow that pattern.
-        # Therefore, bet_executable_path is accepted but not used by ImageSegmenter's own __init__.
+    def __init__(self, images_dir, atlas_paths, output_dir): 
+        super().__init__(input_dir=images_dir, output_dir=output_dir, registered_dir=images_dir) 
         
         labels_subcortex = {
             "left_thalamus": 4, "right_thalamus": 15, "left_hippocampus": 9, "right_hippocampus": 19,
@@ -314,7 +274,6 @@ class ImageSegmenter(BatchProcessingImages):
         logger.info(f"ImageSegmenter initialized. Outputting segmented files to subdirectories of: {self.output_dir}")
 
     def process_single_image(self, args):
-        # ... (user's implementation with logging as before)
         file, segmentation_type = args 
         logger.info(f"Segmenting image: {file} for type: {segmentation_type}")
         try:
@@ -343,11 +302,10 @@ class ImageSegmenter(BatchProcessingImages):
                 atlas_data = atlas_img.get_fdata()
                 current_labels = self.label_mappings[seg_type]
                 output_subdir_for_seg_type = os.path.join(self.output_dir, f"segmented_{seg_type}")
+                base_input_filename = file.replace("_registered.nii.gz", "").replace(".nii.gz", "")
+
                 for label_name, label_value in current_labels.items():
-                    # Output filename should be unique per input image and label
-                    # Assuming `file` is like "input_scan_registered.nii.gz"
-                    base_input_filename = file.replace("_registered.nii.gz", "").replace(".nii.gz", "")
-                    label_out_filename = f"{base_input_filename}_{label_name}.nii.gz"
+                    label_out_filename = f"{base_input_filename}_{label_name}.nii.gz" 
                     label_out_path = os.path.join(output_subdir_for_seg_type, label_out_filename)
                     
                     if os.path.exists(label_out_path):
@@ -366,7 +324,6 @@ class ImageSegmenter(BatchProcessingImages):
             return f"Error processing {file} for segmentation: {str(e)}"
 
     def batch_segment_images(self, segmentation_type='all', num_workers=4):
-        # ... (user's implementation with logging as before)
         tasks = []
         files = [f for f in os.listdir(self.images_dir) if f.endswith('.nii.gz') and 'registered' in f]
         for file in files:
@@ -382,31 +339,26 @@ class ImageSegmenter(BatchProcessingImages):
         logger.info("Batch segmentation completed!")
         
     def plot_segmented_img(self, bg_img_path, segmented_img_path):
-        # ... (user's implementation, ensure plt.show() is commented for server)
         logger.info(f"Plotting segmented image: {segmented_img_path} on background: {bg_img_path}")
-        # ... plotting logic ...
-        # plt.show() # Avoid in server environments
+        # ... (plotting logic, avoid plt.show())
 
 class FeatureExtraction(ImageSegmenter):
-    def __init__(self, images_dir, atlas_paths, output_dir, bet_executable_path=None): # Added for consistency
-        # Calls ImageSegmenter's __init__ which does not use bet_executable_path itself
-        super().__init__(images_dir, atlas_paths, output_dir, bet_executable_path) 
+    def __init__(self, images_dir, atlas_paths, output_dir): 
+        super().__init__(images_dir, atlas_paths, output_dir) 
         logger.info(f"FeatureExtraction initialized. Outputting CSVs to: {self.output_dir}")
         
     def extract_volume(self, segmented_img_path):
-        # ... (user's implementation as before)
         img = nib.load(segmented_img_path)
         data = img.get_fdata()
         voxel_size = np.prod(img.header.get_zooms())
-        volume = np.sum(data > 1e-5) * voxel_size # Threshold slightly above zero for masks
+        volume = np.sum(data > 1e-5) * voxel_size 
         return volume
     
     def extract_surface_area(self, segmented_image_path, method="greyscale", percentile=50):
-        # ... (user's implementation as before with logging and error handling)
         img = nib.load(segmented_image_path)
         data = img.get_fdata()
         spacing = img.header.get_zooms()
-        if data.max() < 1e-5: return 0.0 # Empty mask
+        if data.max() < 1e-5: return 0.0 
         if method == 'binary':
             threshold = filters.threshold_otsu(data[data > 1e-5]) if len(data[data > 1e-5]) > 0 else 0.5
             data_processed = data > threshold
@@ -423,25 +375,14 @@ class FeatureExtraction(ImageSegmenter):
             return 0.0
     
     def extract_compactness(self, volume, surface_area):
-        # ... (user's implementation as before)
         if volume <= 1e-9 or surface_area <= 1e-9: return 0.0
-        # Using a more standard definition related to sphericity / isoperimetric quotient
-        # Sphericity = (pi^(1/3) * (6 * V)^(2/3)) / A. Compactness can be its inverse or related.
-        # For simplicity, let's use a common form where 1 is a perfect sphere.
-        # Compactness = (Surface Area^3) / (36 * pi * Volume^2) -> this is dimensionless, 1 for sphere.
-        # Or, if the user's formula is intended: (surface_area)**3/(volume)**2
-        # Let's stick to a known one: Isoperimetric quotient variant (P^2/A for 2D, A^3/V^2 for 3D)
-        # For a sphere, A = (36*pi*V^2)^(1/3). So A^3 / V^2 = 36*pi.
-        # A common compactness measure is (36*pi*V^2) / A^3. This is 1 for a sphere.
         return (36 * np.pi * volume**2) / (surface_area**3) if surface_area > 1e-9 else 0.0
 
     def extract_sphericity(self, volume, surface_area):
-        # ... (user's implementation as before)
         if surface_area <= 1e-9 or volume <= 1e-9: return 0.0
         return (np.pi**(1/3)) * (6 * volume)**(2/3) / surface_area
     
     def extract_eccentricity(self, segmented_image_path):
-        # ... (user's implementation as before with logging and error handling)
         img = nib.load(segmented_image_path)
         data = img.get_fdata()
         if data.max() < 1e-5: return 0.0
@@ -461,23 +402,32 @@ class FeatureExtraction(ImageSegmenter):
             eigenvalues = np.linalg.eigvalsh(cov_matrix)
             eigenvalues = np.sort(eigenvalues)[::-1] 
             if eigenvalues[0] <= 1e-9: return 0.0
-            if eigenvalues[2] < 0 or eigenvalues[0] < 0:
+            if eigenvalues[2] < 0 or eigenvalues[0] < 0: 
                  logger.warning(f"Negative eigenvalues for {segmented_image_path}: {eigenvalues}.")
                  return 0.0
-            eccentricity = np.sqrt(1 - (eigenvalues[2] / eigenvalues[0]))
-            if not (0 <= eccentricity <= 1):
+            # Ensure eigenvalues[0] is not zero before division
+            if eigenvalues[0] == 0:
+                logger.warning(f"Major eigenvalue is zero for {segmented_image_path}. Cannot compute eccentricity.")
+                return 0.0
+            eccentricity_sq_term = eigenvalues[2] / eigenvalues[0]
+            if eccentricity_sq_term > 1: # Should not happen if sorted correctly and positive
+                logger.warning(f"Minor/Major eigenvalue ratio > 1 ({eccentricity_sq_term}) for {segmented_image_path}. Clamping.")
+                eccentricity_sq_term = 1.0
+            
+            eccentricity = np.sqrt(1 - eccentricity_sq_term)
+            
+            if not (0 <= eccentricity <= 1): 
                 logger.warning(f"Invalid eccentricity {eccentricity} for {segmented_image_path}. Eigenvalues: {eigenvalues}")
                 return 0.0 
             return eccentricity
-        except np.linalg.LinAlgError as e:
-            logger.error(f"LinAlgError for {segmented_image_path}: {str(e)}.")
+        except np.linalg.LinAlgError as e: 
+            logger.error(f"LinAlgError calculating eccentricity for {segmented_image_path}: {str(e)}.")
             return 0.0
         except Exception as e:
             logger.error(f"Error calculating eccentricity for {segmented_image_path}: {str(e)}", exc_info=True)
             return 0.0
     
     def extract_features(self, segmented_dir, output_csv_filename=None):
-        # ... (user's implementation with logging and NaN for errors, as before)
         files = os.listdir(segmented_dir)
         logger.info(f"Extracting features from directory: {segmented_dir}")
         current_scan_features = {}
@@ -501,7 +451,7 @@ class FeatureExtraction(ImageSegmenter):
                     current_scan_features[f"{part_name}_Eccentricity"] = float(eccentricity)
                 except Exception as e:
                     logger.error(f"Error processing features for file {image_path}: {e}", exc_info=True)
-                    current_scan_features[f"{part_name}_Volume"] = np.nan # Use np.nan for missing values
+                    current_scan_features[f"{part_name}_Volume"] = np.nan 
                     current_scan_features[f"{part_name}_Surface_Area"] = np.nan
                     current_scan_features[f"{part_name}_Compactness"] = np.nan
                     current_scan_features[f"{part_name}_Sphericity"] = np.nan
@@ -513,3 +463,6 @@ class FeatureExtraction(ImageSegmenter):
             features_df.to_csv(csv_full_path, index=False)
             logger.info(f"Features extracted and saved to: {csv_full_path}")
         return current_scan_features
+
+# The if __name__ == "__main__": block from user's MRIScansPipeline.py is omitted here
+# as this file is intended to be imported as a module.
