@@ -3,6 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 import logging
+from app.routes import upload as upload_routes
+from app.routes import nifti as nifti_routes
+from app.routes import spaces_browser_routes
+from app.routes import pipeline_trigger_routes
 
 # --- Load environment variables from .env file ---
 # This should be one of the first things your application does.
@@ -21,24 +25,6 @@ except Exception as e:
 
 # Import your routers
 # Ensure these paths match your project structure (app/router/...)
-try:
-    from app.routes import upload as upload_routes
-    from app.routes import nifti as nifti_routes
-    from app.routes import spaces_browser_routes
-    from app.routes import pipeline_trigger_routes
-    # If you have a process.py router, import it as well
-    # from app.router import process as process_routes 
-except ImportError as e:
-    logging.error(f"Failed to import routers. Check paths and ensure __init__.py files are present in directories if needed. Error: {e}")
-    # Define dummy routers if import fails, so app can still be defined (for dev/debug)
-    class DummyRouter:
-        def __init__(self, prefix, tags): self.router = self # Mocking APIRouter instance
-    upload_routes = DummyRouter("/api/upload", ["Upload"])
-    nifti_routes = DummyRouter("/api", ["NIFTI"])
-    spaces_browser_routes = DummyRouter("/api/spaces", ["Spaces Browser"])
-    pipeline_trigger_routes = DummyRouter("/api/pipeline", ["Pipeline Trigger"])
-    # process_routes = DummyRouter("/api/process", ["Process"])
-
 
 app = FastAPI(
     title="MRI Processing API with DigitalOcean Spaces",
