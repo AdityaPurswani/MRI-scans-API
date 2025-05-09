@@ -16,3 +16,4 @@ antspyx==0.5.4
 fastapi
 gunicorn
 httpx
+python-multipart
