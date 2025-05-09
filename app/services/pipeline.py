@@ -317,11 +317,11 @@ class MRIProcessingPipelineWithSpaces:
 
     def run_pipeline(self) -> Dict:
         atlas_paths = {
-            'cortex': "../fsl/HarvardOxford/HarvardOxford-cort-maxprob-thr25-1mm.nii.gz",
-            'subcortex': "../fsl/HarvardOxford/HarvardOxford-sub-maxprob-thr25-1mm.nii.gz",
-            'mni': "../fsl/MNI/MNI-maxprob-thr25-1mm.nii.gz"
+            'cortex': "../../app/fsl//HarvardOxford/HarvardOxford-cort-maxprob-thr25-1mm.nii.gz",
+            'subcortex': "../../app/fsl/HarvardOxford/HarvardOxford-sub-maxprob-thr25-1mm.nii.gz",
+            'mni': "../../app/fsl/MNI/MNI-maxprob-thr25-1mm.nii.gz"
         }
-        mni_template_local_path = "../fsl/MNI152_T1_1mm_brain.nii.gz"
+        mni_template_local_path = "../../app/fsl/MNI152_T1_1mm_brain.nii.gz"
         
         self.clean_spaces_output_directories()
 

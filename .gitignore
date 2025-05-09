@@ -1,7 +1,6 @@
 **/*.pyc
 /uploads
 /processed
-**/*.nii.gz
 **/__pycache__/
 ll
 .env
