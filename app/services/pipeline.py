@@ -10,13 +10,10 @@ from dotenv import load_dotenv
 from typing import Dict, Optional, List, Any
 import requests 
 import subprocess
+import re # For modifying the bet script
 
 # --- Load environment variables ---
 try:
-    # This path assumes this script (app/pipeline.py) is one level down from 'app', 
-    # and .env is in the project root.
-    # If app/pipeline.py is in MRISCANSAPI/app/pipeline.py, then .env is in MRISCANSAPI/
-    # Adjust if your structure is different.
     dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path=dotenv_path)
@@ -27,10 +24,8 @@ except Exception as e:
     logging.error(f"pipeline.py: Error loading .env file: {e}")
 
 # --- Import your actual processing classes ---
-# These are expected to be in a file like MRIScansPipeline.py at the project root.
 MRIScansPipeline_class, ImageSegmenter_class, FeatureExtraction_class = None, None, None
 try:
-    # This assumes your project root (containing MRIScansPipeline.py) is in PYTHONPATH.
     from MRIScansPipeline import MRIScansPipeline as ActualMRIScansPipeline
     from MRIScansPipeline import ImageSegmenter as ActualImageSegmenter
     from MRIScansPipeline import FeatureExtraction as ActualFeatureExtraction
@@ -45,10 +40,10 @@ except ImportError as e:
     )
     # Fallback DUMMY classes 
     class DummyMRIScansPipeline:
-        def __init__(self, input_dir, output_dir, bet_executable_path=None): # Added bet_executable_path
+        def __init__(self, input_dir, output_dir, bet_executable_path=None):
             self.input = input_dir
             self.output = output_dir
-            self.bet_executable_path = bet_executable_path # Store it
+            self.bet_executable_path = bet_executable_path
             os.makedirs(self.output, exist_ok=True)
             logging.warning(f"Using DUMMY MRIScansPipeline: input_dir={input_dir}, output_dir={output_dir}, bet_path='{bet_executable_path}'")
         
@@ -89,11 +84,10 @@ except ImportError as e:
                 return None
 
     class DummyImageSegmenter:
-        def __init__(self, images_dir, atlas_paths, output_dir, bet_executable_path=None): # Added bet_path for consistency
+        def __init__(self, images_dir, atlas_paths, output_dir, bet_executable_path=None):
             self.images_dir = images_dir
             self.atlas_paths = atlas_paths 
             self.output_dir = output_dir
-            # self.bet_executable_path = bet_executable_path # Store if needed by dummy, though not used by current dummy logic
             os.makedirs(self.output_dir, exist_ok=True)
             logging.warning(f"Using DUMMY ImageSegmenter: images_dir={images_dir}, output_dir={output_dir}")
             for atlas_name in self.atlas_paths.keys():
@@ -115,11 +109,10 @@ except ImportError as e:
             return f"DUMMY segmented {filename}" 
 
     class DummyFeatureExtraction:
-        def __init__(self, images_dir, atlas_paths, output_dir, bet_executable_path=None): # Added bet_path for consistency
+        def __init__(self, images_dir, atlas_paths, output_dir, bet_executable_path=None):
             self.images_dir = images_dir
             self.atlas_paths = atlas_paths
             self.output_dir = output_dir
-            # self.bet_executable_path = bet_executable_path # Store if needed
             os.makedirs(self.output_dir, exist_ok=True)
             logging.warning(f"Using DUMMY FeatureExtraction: images_dir={images_dir}, output_dir={output_dir}")
         
@@ -155,12 +148,12 @@ logger = logging.getLogger(__name__)
 class MRIProcessingPipelineWithSpaces:
     def __init__(self, input_object_key: str):
         self.input_object_key = input_object_key
-        self.temp_local_dir = None # Initialize to ensure it's always available for cleanup
+        self.temp_local_dir = None 
         
         if not all([DO_SPACES_ACCESS_KEY_ID, DO_SPACES_SECRET_ACCESS_KEY, DO_SPACES_BUCKET_NAME, DO_SPACES_ENDPOINT_URL]):
             msg = "DigitalOcean Spaces configuration for user data is incomplete."
             logger.error(msg)
-            self._cleanup_temp_dir() # Attempt cleanup if init fails early
+            self._cleanup_temp_dir() 
             raise ValueError(msg)
         
         try:
@@ -203,30 +196,61 @@ class MRIProcessingPipelineWithSpaces:
         os.makedirs(self.local_common_atlases_dir, exist_ok=True)
         os.makedirs(self.local_tools_dir, exist_ok=True)
 
-        # Download and prepare BET executable
-        bet_url = "https://nifti-bucket.lon1.cdn.digitaloceanspaces.com/bet" 
-        self.local_bet_executable_path = os.path.join(self.local_tools_dir, "bet") 
-        logger.info(f"Attempting to download BET executable from {bet_url} to {self.local_bet_executable_path}")
-        if self._download_file_from_url(bet_url, self.local_bet_executable_path):
-            try:
-                os.chmod(self.local_bet_executable_path, 0o755) # rwxr-xr-x (make it executable)
-                logger.info(f"Successfully downloaded and made BET executable: {self.local_bet_executable_path}")
-            except Exception as e:
-                logger.error(f"Failed to make BET executable {self.local_bet_executable_path}: {e}")
-                self._cleanup_temp_dir() 
-                raise RuntimeError(f"Failed to set execute permission for BET: {e}")
-        else:
-            self._cleanup_temp_dir() 
-            raise RuntimeError(f"CRITICAL: Failed to download BET executable from {bet_url}")
+        # --- Download and Prepare BET and its dependencies ---
+        bet_original_url = "https://nifti-bucket.lon1.cdn.digitaloceanspaces.com/bet" 
+        # IMPORTANT: You need to upload 'remove_ext' to your space and provide its URL here
+        remove_ext_url = "https://nifti-bucket.lon1.cdn.digitaloceanspaces.com/remove_ext" # <<<< REPLACE WITH ACTUAL URL for remove_ext
 
-        # Initialize the appropriate pipeline class (actual or dummy)
-        # Now passing the bet_executable_path
+        local_bet_original_path = os.path.join(self.local_tools_dir, "bet_original")
+        self.local_bet_executable_path = os.path.join(self.local_tools_dir, "bet") # This will be the modified one
+        local_remove_ext_path = os.path.join(self.local_tools_dir, "remove_ext")
+
+        logger.info(f"Attempting to download original BET script from {bet_original_url}")
+        if not self._download_file_from_url(bet_original_url, local_bet_original_path):
+            self._cleanup_temp_dir() 
+            raise RuntimeError(f"CRITICAL: Failed to download original BET script from {bet_original_url}")
+
+        logger.info(f"Attempting to download remove_ext script from {remove_ext_url}")
+        if not self._download_file_from_url(remove_ext_url, local_remove_ext_path):
+            self._cleanup_temp_dir()
+            raise RuntimeError(f"CRITICAL: Failed to download remove_ext script from {remove_ext_url}. Please upload remove_ext and update its URL.")
+
+        try:
+            # Modify the downloaded bet_original script
+            with open(local_bet_original_path, 'r') as f_original_bet:
+                bet_content = f_original_bet.read()
+            
+            # Replace the hardcoded path to remove_ext
+            # Ensure the replacement target is specific enough, e.g., exactly "/bin/remove_ext"
+            # Using re.escape on the path to be replaced if it contains special regex characters.
+            # However, for a simple path like /bin/remove_ext, direct string replacement is fine.
+            modified_bet_content = bet_content.replace("/bin/remove_ext", local_remove_ext_path)
+            # Add more replacements here if other hardcoded paths are found in bet script
+            # For example, if bet uses $FSLDIR/bin/remove_ext, you might need to modify how FSLDIR is set or used.
+
+            with open(self.local_bet_executable_path, 'w') as f_modified_bet:
+                f_modified_bet.write(modified_bet_content)
+            
+            logger.info(f"Original BET script modified. Hardcoded '/bin/remove_ext' replaced with '{local_remove_ext_path}'. Modified script saved to {self.local_bet_executable_path}")
+
+            # Set execute permissions for both modified bet and remove_ext
+            os.chmod(self.local_bet_executable_path, 0o755) 
+            os.chmod(local_remove_ext_path, 0o755)
+            logger.info(f"Successfully made BET executable: {self.local_bet_executable_path}")
+            logger.info(f"Successfully made remove_ext executable: {local_remove_ext_path}")
+
+        except Exception as e:
+            logger.error(f"Failed during BET script modification or chmod: {e}")
+            self._cleanup_temp_dir() 
+            raise RuntimeError(f"Failed during BET script setup: {e}")
+        # --- End of BET setup ---
+
         self.pipeline = MRIScansPipeline_class( 
             input_dir=self.local_uploads_dir,
             output_dir=self.local_processed_dir,
-            bet_executable_path=self.local_bet_executable_path # Pass the downloaded BET path
+            bet_executable_path=self.local_bet_executable_path 
         )
-        logger.info(f"Initialized MRIScansPipeline (type: {type(self.pipeline).__name__}) with BET: '{self.local_bet_executable_path}'")
+        logger.info(f"Initialized MRIScansPipeline (type: {type(self.pipeline).__name__}) with patched BET: '{self.local_bet_executable_path}'")
 
     def _upload_to_spaces(self, local_file_path: str, object_key: str) -> Optional[str]:
         if not os.path.exists(local_file_path):
@@ -474,12 +498,11 @@ class MRIProcessingPipelineWithSpaces:
             output_s3_uris["registered_uncompressed_s3_uri"] = self.save_uncompressed_copy_to_spaces(local_registered_path, os.path.join(self.uncompressed_spaces_prefix, "registered.nii"))
 
             logger.info(f"➡ Segmenting brain images using downloaded atlases. Input dir for segmenter: {self.local_processed_dir}, Output dir for segmenter: {self.local_segmented_dir}")
-            # Pass bet_executable_path if the actual ImageSegmenter class (or its parent) requires it
             segmenter = ImageSegmenter_class(
                 images_dir=self.local_processed_dir, 
                 atlas_paths=atlas_paths_for_pipeline,
                 output_dir=self.local_segmented_dir,
-                bet_executable_path=self.local_bet_executable_path # Pass if needed by actual class
+                bet_executable_path=self.local_bet_executable_path 
             )
             files_to_segment = ["registered.nii.gz"] 
             for file_to_seg in files_to_segment:
@@ -501,12 +524,11 @@ class MRIProcessingPipelineWithSpaces:
                             output_s3_uris["segmented_files_uncompressed_s3_uris"][dict_key_for_uncompressed] = self.save_uncompressed_copy_to_spaces(local_segmented_file_path, spaces_segmented_uncompressed_key)
 
             logger.info(f"➡ Extracting volumetric features. Segmented images dir: {self.local_segmented_dir}, Output CSVs to: {self.local_features_dir}")
-            # Pass bet_executable_path if the actual FeatureExtraction class (or its parent) requires it
             feature_extractor = FeatureExtraction_class(
                 images_dir=self.local_segmented_dir, 
                 atlas_paths=atlas_paths_for_pipeline, 
                 output_dir=self.local_features_dir,
-                bet_executable_path=self.local_bet_executable_path # Pass if needed by actual class
+                bet_executable_path=self.local_bet_executable_path 
             )
             
             cortex_csv_basename = "volumetrics_cortex.csv"
@@ -532,18 +554,18 @@ class MRIProcessingPipelineWithSpaces:
 
         except FileNotFoundError as fnf_error:
             logger.error(f"FileNotFoundError during pipeline: {fnf_error}", exc_info=True)
-            self._cleanup_temp_dir() # Ensure cleanup on error
+            self._cleanup_temp_dir() 
             raise RuntimeError(f"Pipeline failed due to missing file: {fnf_error}") from fnf_error
         except Exception as e:
             logger.error(f"Error during MRI processing pipeline: {e}", exc_info=True)
-            self._cleanup_temp_dir() # Ensure cleanup on error
+            self._cleanup_temp_dir() 
             raise RuntimeError(f"Pipeline failed with error: {e}") from e 
-        # finally: # The cleanup is now called within the except blocks or after successful completion.
-        #     self._cleanup_temp_dir() 
-        #     logger.info("Temporary directory cleanup finished.")
+        # finally: # Cleanup is now handled explicitly in except blocks or after success
+            # self._cleanup_temp_dir()
+            # logger.info("Temporary directory cleanup finished.") # This will be called by the caller of run_pipeline if needed
 
     def _cleanup_temp_dir(self):
-        if self.temp_local_dir and os.path.exists(self.temp_local_dir): # Check if self.temp_local_dir was set
+        if self.temp_local_dir and os.path.exists(self.temp_local_dir): 
             try:
                 shutil.rmtree(self.temp_local_dir)
                 logger.info(f"Successfully removed temporary directory: {self.temp_local_dir}")
