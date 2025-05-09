@@ -97,8 +97,8 @@ class MRIScansPipeline():
         # basename takes only the file name not the directories before that
         output_path = os.path.join(self.output, output_path)
         
-        bet_cmd = f"/Users/adityapurswani/Documents/ll/bin/bet {input_image_path} {output_path} -R"
-        process_run= subprocess.run(bet_cmd, shell=True, capture_output=True, text=True)
+        bet_cmd = f"./app/fsl/bet {input_image_path} {output_path} -R"
+        process_run = subprocess.run(bet_cmd, shell=True, capture_output=True, text=True)
         
         # Check if the process is successfully performed or not
         if process_run.returncode != 0 or not os.path.exists(output_path):
@@ -169,7 +169,7 @@ class MRIScansPipeline():
             )
             
             # Save warped image
-            registered_image_path = output_prefix + 'registered.nii.gz'
+            registered_image_path = os.path.join(output_prefix, 'registered.nii.gz')
             warped_img = registration['warpedmovout'] # warpedmovout = Moving image warped to space of fixed image.
             ants.image_write(warped_img, registered_image_path)
             print(registered_image_path)

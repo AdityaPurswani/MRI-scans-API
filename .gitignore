@@ -4,3 +4,5 @@
 **/*.nii.gz
 **/__pycache__/
 ll
+.env
+**/*.csv
