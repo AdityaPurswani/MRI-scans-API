@@ -27,8 +27,8 @@ except Exception as e:
 # Ensure these paths match your project structure (app/router/...)
 
 app = FastAPI(
-    title="MRI Processing API with DigitalOcean Spaces",
-    description="An API for MRI preprocessing, segmentation, and volumetric feature extraction, integrated with DigitalOcean Spaces.",
+    title="MRI Processing API",
+    description="An API for MRI preprocessing, segmentation, and volumetric feature extraction",
     version="1.1.0", # Updated version
     docs_url="/docs",
     redoc_url="/redoc"
